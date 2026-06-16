@@ -1,6 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { Layers, Zap, ArrowLeft, Trash2 } from "lucide-react";
+import { Layers, Zap, ArrowLeft, BarChart2, Clock } from "lucide-react";
 import Link from "next/link";
 
 import { auth } from "@/lib/auth";
@@ -10,6 +10,7 @@ import {
   listFunnelSteps,
   listEventAssertionsByMonitor,
 } from "@/lib/queries/funnel";
+import { getUptimeStats, getRecentRuns } from "@/lib/queries/uptime";
 import { PageHeader } from "@/components/blocks/page-header";
 import { EmptyState } from "@/components/blocks/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { UptimeStats } from "@/app/_components/uptime-stats";
+import { RecentRunsTable } from "@/app/_components/recent-runs-table";
 
 // ---------------------------------------------------------------------------
 // Status badge variant map
@@ -60,17 +63,21 @@ export default async function MonitorDetailPage({
     redirect("/sign-in");
   }
 
-  // Fetch monitor + funnel data in parallel — independent queries.
-  const [mon, steps] = await Promise.all([
-    getMonitor(db, id, session.user.id),
-    listFunnelSteps(db, id),
-  ]);
+  // First, verify ownership. Return unauthorized users to /dashboard.
+  const mon = await getMonitor(db, id, session.user.id);
 
   if (!mon) {
-    notFound();
+    redirect("/dashboard");
   }
 
-  const assertions = await listEventAssertionsByMonitor(db, id);
+  // Fetch remaining data in parallel — all independent queries.
+  const [steps, assertions, stats7d, stats30d, recentRuns] = await Promise.all([
+    listFunnelSteps(db, id),
+    listEventAssertionsByMonitor(db, id),
+    getUptimeStats(db, id, 7),
+    getUptimeStats(db, id, 30),
+    getRecentRuns(db, id, 20),
+  ]);
 
   // Build a lookup from funnelStepId → assertions for the step
   const assertionsByStep = new Map<string, typeof assertions>();
@@ -101,6 +108,32 @@ export default async function MonitorDetailPage({
           }
         />
       </div>
+
+      {/* ── Uptime StatCards + ad-spend callout ── */}
+      <Card className="rounded-xl border bg-card shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="font-display text-xl font-medium flex items-center gap-2">
+            <BarChart2 className="size-5 text-muted-foreground" />
+            Uptime
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <UptimeStats stats7d={stats7d} stats30d={stats30d} />
+        </CardContent>
+      </Card>
+
+      {/* ── Recent Runs ── */}
+      <Card className="rounded-xl border bg-card shadow-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="font-display text-xl font-medium flex items-center gap-2">
+            <Clock className="size-5 text-muted-foreground" />
+            Recent Runs
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RecentRunsTable runs={recentRuns} />
+        </CardContent>
+      </Card>
 
       {/* ── Funnel Steps ── */}
       <Card className="rounded-xl border bg-card shadow-sm">
