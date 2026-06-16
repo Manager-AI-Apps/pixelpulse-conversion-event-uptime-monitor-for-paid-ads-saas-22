@@ -54,6 +54,10 @@ const eslintConfig = [
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
+        // Browser globals used by public/snippet.js
+        location: "readonly",
+        navigator: "readonly",
+        Blob: "readonly",
       },
     },
     rules: {
