@@ -90,6 +90,9 @@ export const statusEnum = pgEnum("status", [
   "passing",
   "failing",
   "pending",
+  "running",
+  "pending_retry",
+  "failed",
 ]);
 
 /** Browser interaction type for funnel steps */
@@ -141,12 +144,15 @@ export const monitor = pgTable(
     status: statusEnum("status").notNull().default("active"),
     intervalMinutes: integer("interval_minutes").notNull().default(15),
     slackWebhookUrl: text("slack_webhook_url"),
+    /** When this monitor should next be checked. Null = schedule ASAP. */
+    nextRunAt: timestamp("next_run_at", { withTimezone: false }),
     createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: false }).notNull().defaultNow(),
   },
   (t) => [
     index("monitor_user_id_idx").on(t.userId),
     index("monitor_status_idx").on(t.status),
+    index("monitor_next_run_at_idx").on(t.nextRunAt),
   ],
 );
 
@@ -216,6 +222,10 @@ export const checkRun = pgTable(
     diagnosisCode: diagnosisCodeEnum("diagnosis_code"),
     /** Human-readable alert message sent to Slack (if any) */
     alertMessage: text("alert_message"),
+    /** Number of times this run has been attempted (0 = first attempt). */
+    retryCount: integer("retry_count").notNull().default(0),
+    /** When this run may be re-picked by the worker after a transient failure. */
+    retryAfter: timestamp("retry_after", { withTimezone: false }),
     createdAt: timestamp("created_at", { withTimezone: false }).notNull().defaultNow(),
   },
   (t) => [

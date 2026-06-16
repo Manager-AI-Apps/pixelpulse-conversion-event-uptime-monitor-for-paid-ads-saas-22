@@ -39,6 +39,9 @@ const STATUS_VARIANT = {
   failing: "destructive",
   paused: "outline",
   pending: "outline",
+  running: "outline",
+  pending_retry: "outline",
+  failed: "destructive",
 } as const;
 
 // ---------------------------------------------------------------------------

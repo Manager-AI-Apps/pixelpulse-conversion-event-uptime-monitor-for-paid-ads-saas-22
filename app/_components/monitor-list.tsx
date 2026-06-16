@@ -25,6 +25,9 @@ const STATUS_VARIANT: Record<
   failing: "destructive",
   paused: "outline",
   pending: "outline",
+  running: "outline",
+  pending_retry: "outline",
+  failed: "destructive",
 };
 
 const COLUMNS: Column<Monitor>[] = [
