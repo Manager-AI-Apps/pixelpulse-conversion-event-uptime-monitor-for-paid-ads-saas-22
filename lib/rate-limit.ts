@@ -1,56 +1,76 @@
 /**
- * Minimal in-memory rate limiter (fixed window). Suitable for the single-
- * instance Render free tier; swap the store for Redis/Upstash if the app ever
- * scales horizontally. Apply on auth routes (brute-force protection) and
- * webhooks (abuse protection).
+ * Sliding-window in-memory rate limiter.
+ *
+ * Tracks individual request timestamps per key so the window slides
+ * continuously instead of resetting at a fixed boundary. Suitable for the
+ * single-instance Render free tier; swap the store for Redis/Upstash if the
+ * app ever scales horizontally. Apply on auth routes (brute-force protection)
+ * and specific API endpoints (abuse protection).
  *
  * Usage (in a route handler):
- *   const { ok } = rateLimit(`signin:${ip}`, 5, 60_000);
- *   if (!ok) throw new ApiError("rate_limited", "Too many attempts.");
+ *   const result = rateLimit(`import:${userId}`, 10, 60_000);
+ *   if (result.limited) throw new ApiError("rate_limited", "Too many requests.");
  */
 
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
-const buckets = new Map<string, Bucket>();
+// Map key → array of request timestamps (milliseconds since epoch).
+const windows = new Map<string, number[]>();
 
 export interface RateLimitResult {
-  ok: boolean;
+  /** true when the request is over the limit and should be blocked */
+  limited: boolean;
+  /** How many requests remain before the limit is hit */
   remaining: number;
+  /** Epoch ms when the earliest queued request exits the window */
   resetAt: number;
 }
 
+/**
+ * Sliding-window rate limiter.
+ *
+ * @param key      Uniquely identifies the rate-limit bucket (e.g. `import:${userId}`)
+ * @param limit    Maximum number of requests permitted in `windowMs`
+ * @param windowMs Duration of the sliding window in milliseconds
+ */
 export function rateLimit(
   key: string,
   limit: number,
   windowMs: number,
 ): RateLimitResult {
   const now = Date.now();
-  const existing = buckets.get(key);
+  const cutoff = now - windowMs;
 
-  if (!existing || existing.resetAt <= now) {
-    const resetAt = now + windowMs;
-    buckets.set(key, { count: 1, resetAt });
-    return { ok: true, remaining: limit - 1, resetAt };
+  // Retrieve existing timestamps and discard those outside the window.
+  const raw = windows.get(key) ?? [];
+  const active = raw.filter((t) => t > cutoff);
+
+  if (active.length >= limit) {
+    // The oldest active request tells us when the first slot opens up.
+    const oldest = Math.min(...active);
+    windows.set(key, active);
+    return { limited: true, remaining: 0, resetAt: oldest + windowMs };
   }
 
-  if (existing.count >= limit) {
-    return { ok: false, remaining: 0, resetAt: existing.resetAt };
-  }
+  // Admit the request by recording its timestamp.
+  active.push(now);
+  windows.set(key, active);
 
-  existing.count += 1;
   return {
-    ok: true,
-    remaining: limit - existing.count,
-    resetAt: existing.resetAt,
+    limited: false,
+    remaining: limit - active.length,
+    resetAt: now + windowMs,
   };
 }
 
-/** Drop expired buckets so the Map doesn't grow unbounded. */
+/** Clear all rate-limit state. Intended for use in tests between test cases. */
+export function clearRateLimits(): void {
+  windows.clear();
+}
+
+/** Drop entries with no active timestamps to keep the Map bounded. */
 export function pruneRateLimits(now: number = Date.now()): void {
-  for (const [key, bucket] of buckets) {
-    if (bucket.resetAt <= now) buckets.delete(key);
+  for (const [key, timestamps] of windows) {
+    if (timestamps.every((t) => t <= now)) {
+      windows.delete(key);
+    }
   }
 }
