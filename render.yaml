@@ -30,6 +30,28 @@ services:
         sync: false
       - key: BETTER_AUTH_SECRET
         sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  # Background worker: polls check_run for pending/pending_retry jobs and
+  # replays funnels with a headless browser (Playwright). Separate from the
+  # web service so Playwright binaries don't bloat the Next.js image.
+  - type: worker
+    name: build-engine-worker
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: pnpm install && pnpm exec playwright install --with-deps chromium
+    startCommand: node -e "const {runWorkerCycle}=require('./.next/server/lib/worker/index');const{chromium}=require('playwright');(async()=>{while(true){try{await runWorkerCycle(()=>chromium.launch({headless:true}).then(b=>b.newPage()))}catch(e){console.error('[worker]',e)}await new Promise(r=>setTimeout(r,15000))}})();"
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
 
 databases:
   - name: build-engine-db
