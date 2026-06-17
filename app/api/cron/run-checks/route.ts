@@ -20,6 +20,11 @@ import { db } from "@/lib/db";
 import { requireEnv } from "@/lib/env";
 import { schedulePendingRuns } from "@/lib/worker/index";
 
+/** GET /api/cron/run-checks — health / existence check (no auth required). */
+export async function GET(_req: NextRequest): Promise<NextResponse> {
+  return NextResponse.json({ ok: true, endpoint: "run-checks" });
+}
+
 export const POST = handleRoute(async (req: NextRequest): Promise<NextResponse> => {
   // Validate CRON_SECRET — read inside the handler so startup never throws
   const cronSecret = requireEnv("CRON_SECRET");

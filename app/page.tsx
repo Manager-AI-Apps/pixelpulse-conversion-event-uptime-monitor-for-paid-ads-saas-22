@@ -46,7 +46,7 @@ export default function Home() {
             <Link href="/sign-in">Sign in</Link>
           </Button>
           <Button asChild size="sm">
-            <Link href="/sign-up">Get started free</Link>
+            <Link href="/sign-up">Sign up</Link>
           </Button>
           <ThemeToggle />
         </div>
